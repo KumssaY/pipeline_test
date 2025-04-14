@@ -1,40 +1,54 @@
+import os
 import requests
 from google.cloud import bigquery
-from datetime import datetime, timezone
-import os
-from dotenv import load_dotenv
+from flask import Flask
 
-# Load environment variables
-load_dotenv()
+app = Flask(__name__)
 
-# Fetch the environment variables
-api_url = os.getenv("DUMMY_PRODUCTS_API_URL")
-table_id = f"{os.getenv('BIGQUERY_PROJECT')}.{os.getenv('BIGQUERY_DATASET')}.products"
+@app.route('/')
+def etl():
+    # Load environment variables
+    project_id = os.environ.get('PROJECT_ID')
+    dataset_id = os.environ.get('DATASET_ID')
+    table_id = os.environ.get('TABLE_ID')
 
+    # Fetch data from mock API
+    response = requests.get('https://dummyjson.com/products')
+    products = response.json().get('products', [])
 
-def fetch_dummy_products(request):
-  print("test 1")
-  url = api_url
-  response = requests.get(url)
-  products = response.json().get('products', [])
-  print("test 2")
-  # Init BigQuery client
-  client = bigquery.Client()
-  table__id = table_id
+    # Initialize BigQuery client
+    client = bigquery.Client()
 
-  rows_to_insert = []
+    # Reference to the BigQuery table
+    table_ref = client.dataset(dataset_id).table(table_id)
 
-  for product in products:
-      rows_to_insert.append({
-          "id": product["id"],
-          "title": product["title"],
-          "price": product["price"],
-          "updated_at": datetime.now(timezone.utc).isoformat()
-      })
+    # Fetch existing IDs to avoid duplicates
+    query = f"SELECT id FROM `{project_id}.{dataset_id}.{table_id}`"
+    query_job = client.query(query)
+    existing_ids = [row.id for row in query_job]
 
-  # Insert rows - duplicates will fail unless you use MERGE in advanced case
-  errors = client.insert_rows_json(table__id, rows_to_insert)
+    # Filter new products
+    new_products = [product for product in products if product['id'] not in existing_ids]
 
-  if errors:
-      return f"Errors occurred: {errors}", 500
-  return "Inserted new products successfully! ✅"
+    # Prepare rows to insert
+    rows_to_insert = [
+        {
+            "id": product["id"],
+            "title": product["title"],
+            "description": product["description"],
+            "price": product["price"],
+            "brand": product["brand"],
+            "category": product["category"]
+        }
+        for product in new_products
+    ]
+
+    # Insert new rows into BigQuery
+    if rows_to_insert:
+        errors = client.insert_rows_json(table_ref, rows_to_insert)
+        if errors:
+            return f"Encountered errors: {errors}", 500
+        else:
+            return f"Inserted {len(rows_to_insert)} new records.", 200
+    else:
+        return "No new records to insert.", 200
