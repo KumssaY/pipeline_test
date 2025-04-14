@@ -9,17 +9,9 @@ app = Flask(__name__)
 def etl():
     try:
         print("Starting ETL process...")
-
-        print("ENV PROJECT_ID:", os.environ.get('PROJECT_ID'))
-        print("ENV DATASET_ID:", os.environ.get('DATASET_ID'))
-        print("ENV TABLE_ID:", os.environ.get('TABLE_ID'))
-
         project_id = os.environ.get('PROJECT_ID')
         dataset_id = os.environ.get('DATASET_ID')
         table_id = os.environ.get('TABLE_ID')
-
-        if not project_id or not dataset_id or not table_id:
-            return "One or more environment variables are missing.", 500
 
         print(f"Using project: {project_id}, dataset: {dataset_id}, table: {table_id}")
 
