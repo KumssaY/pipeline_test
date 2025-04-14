@@ -7,48 +7,51 @@ app = Flask(__name__)
 
 @app.route('/')
 def etl():
-    # Load environment variables
-    project_id = os.environ.get('PROJECT_ID')
-    dataset_id = os.environ.get('DATASET_ID')
-    table_id = os.environ.get('TABLE_ID')
+    try:
+        print("Starting ETL process...")
+        project_id = os.environ.get('PROJECT_ID')
+        dataset_id = os.environ.get('DATASET_ID')
+        table_id = os.environ.get('TABLE_ID')
 
-    # Fetch data from mock API
-    response = requests.get('https://dummyjson.com/products')
-    products = response.json().get('products', [])
+        print(f"Using project: {project_id}, dataset: {dataset_id}, table: {table_id}")
 
-    # Initialize BigQuery client
-    client = bigquery.Client()
+        # Fetch data
+        response = requests.get('https://dummyjson.com/products')
+        response.raise_for_status()  # raise HTTP errors
+        products = response.json().get('products', [])
 
-    # Reference to the BigQuery table
-    table_ref = client.dataset(dataset_id).table(table_id)
+        print(f"Fetched {len(products)} products from API.")
 
-    # Fetch existing IDs to avoid duplicates
-    query = f"SELECT id FROM `{project_id}.{dataset_id}.{table_id}`"
-    query_job = client.query(query)
-    existing_ids = [row.id for row in query_job]
+        # BigQuery
+        client = bigquery.Client()
+        table_ref = client.dataset(dataset_id).table(table_id)
 
-    # Filter new products
-    new_products = [product for product in products if product['id'] not in existing_ids]
+        query = f"SELECT id FROM `{project_id}.{dataset_id}.{table_id}`"
+        existing_ids = [row.id for row in client.query(query)]
 
-    # Prepare rows to insert
-    rows_to_insert = [
-        {
-            "id": product["id"],
-            "title": product["title"],
-            "description": product["description"],
-            "price": product["price"],
-            "brand": product["brand"],
-            "category": product["category"]
-        }
-        for product in new_products
-    ]
+        print(f"Found {len(existing_ids)} existing product IDs in BigQuery.")
 
-    # Insert new rows into BigQuery
-    if rows_to_insert:
-        errors = client.insert_rows_json(table_ref, rows_to_insert)
-        if errors:
-            return f"Encountered errors: {errors}", 500
-        else:
+        new_products = [p for p in products if p['id'] not in existing_ids]
+
+        rows_to_insert = [{
+            "id": p["id"],
+            "title": p["title"],
+            "description": p["description"],
+            "price": p["price"],
+            "brand": p["brand"],
+            "category": p["category"]
+        } for p in new_products]
+
+        if rows_to_insert:
+            errors = client.insert_rows_json(table_ref, rows_to_insert)
+            if errors:
+                print("Insert errors:", errors)
+                return f"Errors: {errors}", 500
+            print(f"Inserted {len(rows_to_insert)} new records.")
             return f"Inserted {len(rows_to_insert)} new records.", 200
-    else:
-        return "No new records to insert.", 200
+        else:
+            print("No new records to insert.")
+            return "No new records to insert.", 200
+    except Exception as e:
+        print("ETL error:", e)
+        return f"ETL error: {e}", 500
