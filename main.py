@@ -34,12 +34,12 @@ def etl():
         new_products = [p for p in products if p['id'] not in existing_ids]
 
         rows_to_insert = [{
-            "id": p["id"],
-            "title": p["title"],
-            "description": p["description"],
-            "price": p["price"],
-            "brand": p["brand"],
-            "category": p["category"]
+            "id": p.get("id"),
+            "title": p.get("title", ""),
+            "description": p.get("description", ""),
+            "price": p.get("price", 0),
+            "brand": p.get("brand", ""),
+            "category": p.get("category", "")
         } for p in new_products]
 
         if rows_to_insert:
